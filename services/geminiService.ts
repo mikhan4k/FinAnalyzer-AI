@@ -71,32 +71,32 @@ const responseSchema = {
 };
 
 export const extractFinancials = async (base64File: string, mimeType: string, basis: ReportingBasis): Promise<ExtractionResult> => {
-  // Initialize AI inside the call to ensure the latest API_KEY from process.env is used
+  // Initialize AI inside the call to ensure the latest API_KEY from process.env is used.
+  // The API key is injected via Vite's define plugin.
   const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
-    throw new Error("Gemini API Key is missing. Please set the API_KEY environment variable in Vercel.");
+    throw new Error("Gemini API Key is missing. Please ensure the API_KEY environment variable is configured.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
 
+  // Use a single Content object instead of an array for a cleaner single-turn request.
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: [
-      {
-        parts: [
-          {
-            inlineData: {
-              data: base64File,
-              mimeType: mimeType,
-            },
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            data: base64File,
+            mimeType: mimeType,
           },
-          {
-            text: `Analyze this annual report and extract the ${basis} Profit & Loss statement (Statement of Comprehensive Income), ${basis} Balance Sheet (Statement of Financial Position), and ${basis} Cash Flow statement. Ensure you capture the correct line items, exact values for the listed years, and identify which rows represent totals or sub-totals. If multiple years are present (e.g., current and prior), include both as separate columns. Focus exclusively on the ${basis} figures as requested. Return the data in the specified JSON schema.`,
-          },
-        ],
-      },
-    ],
+        },
+        {
+          text: `Analyze this annual report and extract the ${basis} Profit & Loss statement (Statement of Comprehensive Income), ${basis} Balance Sheet (Statement of Financial Position), and ${basis} Cash Flow statement. Ensure you capture the correct line items, exact values for the listed years, and identify which rows represent totals or sub-totals. If multiple years are present (e.g., current and prior), include both as separate columns. Focus exclusively on the ${basis} figures as requested. Return the data in the specified JSON schema.`,
+        },
+      ],
+    },
     config: {
       responseMimeType: "application/json",
       responseSchema: responseSchema,
@@ -104,6 +104,7 @@ export const extractFinancials = async (base64File: string, mimeType: string, ba
     },
   });
 
+  // Access the text property directly on the response object.
   const text = response.text;
   if (!text) throw new Error("No response content received from the AI model.");
   
