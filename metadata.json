@@ -1,0 +1,5 @@
+{
+  "name": "FinAnalyzer AI",
+  "description": "Extract and visualize professional financial statements (P/L, Balance Sheet, Cash Flow) from company annual reports using Gemini AI.",
+  "requestFramePermissions": []
+}
