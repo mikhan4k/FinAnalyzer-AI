@@ -1,16 +1,49 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { extractFinancials } from './services/geminiService';
 import { ExtractionResult, StatementType, ReportingBasis } from './types';
 import FinancialTable from './components/FinancialTable';
 
+// Removed conflicting local declaration of aistudio as it is provided by the platform environment.
+
 const App: React.FC = () => {
+  const [hasKey, setHasKey] = useState<boolean>(true);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<StatementType>(StatementType.PL);
   const [reportingBasis, setReportingBasis] = useState<ReportingBasis>(ReportingBasis.CONSOLIDATED);
+
+  useEffect(() => {
+    checkApiKey();
+  }, []);
+
+  const checkApiKey = async () => {
+    // Check if key is in env OR if platform has a key selected
+    const envKey = process.env.API_KEY;
+    if (!envKey || envKey === 'undefined') {
+      // Use type assertion to access the platform-provided aistudio object
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
+        const platformHasKey = await aiStudio.hasSelectedApiKey();
+        setHasKey(platformHasKey);
+      } else {
+        setHasKey(false);
+      }
+    } else {
+      setHasKey(true);
+    }
+  };
+
+  const handleSelectKey = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+      await aiStudio.openSelectKey();
+      // Assume success as per platform guidelines to avoid potential race conditions
+      setHasKey(true);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -44,7 +77,13 @@ const App: React.FC = () => {
       setResult(data);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to analyze the document. Please try again with a clearer file.");
+      // If the error indicates a missing entity, reset key state
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasKey(false);
+        setError("API Key verification failed. Please re-select your key.");
+      } else {
+        setError(err.message || "Failed to analyze the document. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -54,6 +93,38 @@ const App: React.FC = () => {
     if (!result) return null;
     return <FinancialTable data={result[activeTab]} />;
   };
+
+  if (!hasKey) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-10 border border-slate-200 text-center">
+          <div className="w-20 h-20 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 mx-auto mb-6">
+            <i className="fas fa-key text-3xl"></i>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">API Key Required</h2>
+          <p className="text-slate-600 mb-8">
+            To use FinAnalyzer AI, you need to select a Gemini API key. Please use a key from a paid GCP project.
+          </p>
+          <div className="space-y-4">
+            <button
+              onClick={handleSelectKey}
+              className="w-full py-4 px-6 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all flex items-center justify-center"
+            >
+              <i className="fas fa-external-link-alt mr-2"></i> Select API Key
+            </button>
+            <a 
+              href="https://ai.google.dev/gemini-api/docs/billing" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block text-sm text-slate-400 hover:text-indigo-600 transition-colors"
+            >
+              Learn more about billing & quotas
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -249,7 +320,7 @@ const App: React.FC = () => {
       <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-slate-500 text-sm font-medium">
-            &copy; {new Date().getFullYear()} Imran Khan. All rights reserved.
+            &copy; {new Date().getFullYear()} FinAnalyzer AI. All rights reserved.
           </p>
           <p className="text-slate-400 text-xs mt-1">
             Financial data extracted with AI assistance. Always verify with official reports.

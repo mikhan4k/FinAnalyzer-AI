@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractionResult, ReportingBasis } from "../types";
 
@@ -72,7 +73,7 @@ const responseSchema = {
 
 export const extractFinancials = async (base64File: string, mimeType: string, basis: ReportingBasis): Promise<ExtractionResult> => {
   // Initialize AI inside the call to ensure the latest API_KEY from process.env is used.
-  // The API key is injected via Vite's define plugin.
+  // The API key is obtained exclusively from process.env.API_KEY.
   const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
@@ -81,9 +82,9 @@ export const extractFinancials = async (base64File: string, mimeType: string, ba
 
   const ai = new GoogleGenAI({ apiKey });
 
-  // Use a single Content object instead of an array for a cleaner single-turn request.
+  // Use gemini-3-pro-preview for complex reasoning and accurate extraction of financial tables.
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3-pro-preview",
     contents: {
       parts: [
         {
