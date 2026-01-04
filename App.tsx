@@ -1,10 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { extractFinancials } from './services/geminiService';
-import { ExtractionResult, StatementType, ReportingBasis } from './types';
+import { ExtractionResult, StatementType, ReportingBasis, FinancialStatement } from './types';
 import FinancialTable from './components/FinancialTable';
-
-// Removed conflicting local declaration of aistudio as it is provided by the platform environment.
 
 const App: React.FC = () => {
   const [hasKey, setHasKey] = useState<boolean>(true);
@@ -20,10 +18,8 @@ const App: React.FC = () => {
   }, []);
 
   const checkApiKey = async () => {
-    // Check if key is in env OR if platform has a key selected
     const envKey = process.env.API_KEY;
     if (!envKey || envKey === 'undefined') {
-      // Use type assertion to access the platform-provided aistudio object
       const aiStudio = (window as any).aistudio;
       if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
         const platformHasKey = await aiStudio.hasSelectedApiKey();
@@ -40,7 +36,6 @@ const App: React.FC = () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       await aiStudio.openSelectKey();
-      // Assume success as per platform guidelines to avoid potential race conditions
       setHasKey(true);
     }
   };
@@ -77,7 +72,6 @@ const App: React.FC = () => {
       setResult(data);
     } catch (err: any) {
       console.error(err);
-      // If the error indicates a missing entity, reset key state
       if (err.message?.includes("Requested entity was not found")) {
         setHasKey(false);
         setError("API Key verification failed. Please re-select your key.");
@@ -87,6 +81,48 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportToExcel = () => {
+    if (!result) return;
+
+    const wb = XLSX.utils.book_new();
+
+    const addStatementSheet = (statement: FinancialStatement, sheetName: string) => {
+      // Create data array: headers first, then rows
+      const data = [
+        ["Description", ...statement.years],
+        ...statement.rows.map(row => [row.label, ...row.values])
+      ];
+      
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      
+      // Basic column width adjustment
+      const wscols = [
+        { wch: 40 }, // Description column
+        ...statement.years.map(() => ({ wch: 15 })) // Year columns
+      ];
+      ws['!cols'] = wscols;
+
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    };
+
+    addStatementSheet(result.profitAndLoss, "Profit & Loss");
+    addStatementSheet(result.balanceSheet, "Balance Sheet");
+    addStatementSheet(result.cashFlow, "Cash Flow");
+
+    const fileName = `${result.companyName.replace(/\s+/g, '_')}_${reportingBasis.toLowerCase()}_Financials.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const exportToJson = () => {
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${result.companyName.replace(/\s+/g, '_')}_${reportingBasis.toLowerCase()}.json`;
+    a.click();
   };
 
   const renderActiveStatement = () => {
@@ -146,7 +182,6 @@ const App: React.FC = () => {
       </nav>
 
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-20">
-        {/* Intro Section */}
         {!result && !loading && (
           <div className="text-center max-w-2xl mx-auto mb-10">
             <h2 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
@@ -158,10 +193,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Configuration & Upload Area */}
         {!result && (
           <div className={`max-w-xl mx-auto space-y-6 transition-all duration-300 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {/* Statement Basis Selector */}
             <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex space-x-1">
               <button
                 onClick={() => setReportingBasis(ReportingBasis.CONSOLIDATED)}
@@ -223,10 +256,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Results Section */}
         {result && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Summary Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
                 <div className="flex items-center space-x-2">
@@ -245,7 +276,6 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Tabs */}
             <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex space-x-1">
               <button
                 onClick={() => setActiveTab(StatementType.PL)}
@@ -273,7 +303,6 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Active Table */}
             <div className="relative">
               <div className="mb-4 flex justify-between items-center">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center">
@@ -290,8 +319,7 @@ const App: React.FC = () => {
               {renderActiveStatement()}
             </div>
 
-            {/* Export Actions */}
-            <div className="flex justify-end space-x-4 sticky bottom-4">
+            <div className="flex flex-wrap justify-end gap-4 sticky bottom-4 no-print">
               <button 
                 onClick={() => window.print()}
                 className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all font-bold flex items-center"
@@ -299,14 +327,13 @@ const App: React.FC = () => {
                 <i className="fas fa-print mr-2"></i> Print Report
               </button>
               <button 
-                onClick={() => {
-                  const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${result.companyName.replace(/\s+/g, '_')}_${reportingBasis.toLowerCase()}.json`;
-                  a.click();
-                }}
+                onClick={exportToExcel}
+                className="bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl hover:bg-emerald-700 transition-all font-bold flex items-center"
+              >
+                <i className="fas fa-file-excel mr-2"></i> Export Excel
+              </button>
+              <button 
+                onClick={exportToJson}
                 className="bg-slate-900 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all font-bold flex items-center"
               >
                 <i className="fas fa-download mr-2"></i> Export JSON
@@ -316,7 +343,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-slate-500 text-sm font-medium">
@@ -328,7 +354,6 @@ const App: React.FC = () => {
         </div>
       </footer>
 
-      {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center space-y-4">
           <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
